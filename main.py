@@ -78,6 +78,7 @@ def load_roles_from_json(json_file: str) -> Dict[str, Role]:
             raise ValueError(f"Users for role '{role_name}' must be a list.")
 
         try:
+            # Folding the lists into sets throws away duplicates without a word. A role file that lists the same permission three times, which usually means a merge went wrong upstream, looks exactly like a clean single entry by the time I score it.
             permissions_set = set(permissions)
             users_set = set(users)
             roles[role_name] = Role(role_name, permissions_set, users_set)
@@ -99,6 +100,7 @@ def calculate_permission_similarity(role1: Role, role2: Role) -> float:
     Returns:
         float: The Jaccard index, representing the similarity score between 0.0 and 1.0.
     """
+    # Permission names compare as exact strings, case included. Two roles that both grant reading under different spellings, Read in one file section and read in another, score as sharing nothing, and no normalisation step anywhere in this tool will rescue them.
     intersection = len(role1.permissions.intersection(role2.permissions))
     union = len(role1.permissions.union(role2.permissions))
 
@@ -177,10 +179,12 @@ def find_similar_roles(roles: Dict[str, Role], similarity_threshold: float, perm
 
             try:
                 similarity = calculate_overall_similarity(role1, role2, permission_weight, user_weight)
+            # This catch is nearly dead code in practice: main validates the weights before any pair reaches me, so the ValueError it waits for can only arrive if find_similar_roles is imported and called directly with bad weights.
             except ValueError as e:
                 logging.error(f"Error calculating similarity between {role1_name} and {role2_name}: {e}")
                 continue
 
+            # The threshold is inclusive, and pairs come out in the order the roles appear in the input file, not sorted by score. A reader scanning the output top down is seeing file order wearing the clothes of a ranking.
             if similarity >= similarity_threshold:
                 similar_roles.append({
                     'role1': role1_name,
@@ -292,4 +296,5 @@ if __name__ == "__main__":
     #    - Many users assigned.  If a role is compromised, many users are potentially affected.
     # 4. Use this information to prioritize security hardening efforts.
     import sys
+    # The exit code plumbing lives down here rather than at the import block at the top, which is why sys is imported inside this guard. main returns 1 for bad weights, a bad threshold, and an unloadable file alike, so the code alone never says which gate stopped the run.
     sys.exit(main())
