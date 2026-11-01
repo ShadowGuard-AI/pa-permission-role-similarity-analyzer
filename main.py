@@ -103,7 +103,7 @@ def calculate_permission_similarity(role1: Role, role2: Role) -> float:
     union = len(role1.permissions.union(role2.permissions))
 
     if union == 0:
-        return 0.0  # Avoid division by zero if both roles have no permissions
+        return 1.0  # Both roles hold no permissions, so they are identical on this metric
 
     return intersection / union
 
@@ -124,7 +124,7 @@ def calculate_user_similarity(role1: Role, role2: Role) -> float:
     union = len(role1.users.union(role2.users))
 
     if union == 0:
-        return 0.0
+        return 1.0  # Both roles have no users, so they are identical on this metric
 
     return intersection / union
 
@@ -217,10 +217,30 @@ def main():
 
     logging.getLogger().setLevel(args.log_level)
 
+    if not (0 <= args.permission_weight <= 1 and 0 <= args.user_weight <= 1 and abs(args.permission_weight + args.user_weight - 1) < 1e-6):
+        logging.error("Error: Permission and user weights must be between 0 and 1 and sum to 1.")
+        print("Error: Permission and user weights must be between 0 and 1 and sum to 1.")
+        return 1
+
+    if not (0 <= args.similarity_threshold <= 1):
+        logging.error("Error: Similarity threshold must be between 0 and 1.")
+        print("Error: Similarity threshold must be between 0 and 1.")
+        return 1
+
+    if args.output_file and os.path.realpath(args.output_file) == os.path.realpath(args.role_definition_file):
+        logging.error("Error: Output file must not overwrite the role definition file.")
+        print("Error: Output file must not overwrite the role definition file.")
+        return 1
+
     try:
         roles = load_roles_from_json(args.role_definition_file)
     except (FileNotFoundError, ValueError) as e:
         logging.error(f"Error loading role definitions: {e}")
+        return 1
+
+    if len(roles) < 2:
+        logging.error("Error: Fewer than two roles loaded. No comparison is possible.")
+        print("Error: Fewer than two roles loaded. No comparison is possible.")
         return 1
 
     try:
